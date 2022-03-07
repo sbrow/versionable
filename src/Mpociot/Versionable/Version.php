@@ -1,6 +1,9 @@
 <?php
 namespace Mpociot\Versionable;
 
+use Diff\Differ\MapDiffer;
+use Diff\DiffOp\DiffOpAdd;
+use Diff\DiffOp\DiffOpChange;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Database\Eloquent\Model as Eloquent;
 use Illuminate\Database\Eloquent\Model;
@@ -90,7 +93,17 @@ class Version extends Eloquent
         $model = $this->getModel();
         $diff  = $againstVersion ? $againstVersion->getModel() : $this->versionable()->withTrashed()->first()->currentVersion()->getModel();
 
-        $diffArray = array_diff_assoc($diff->getAttributes(), $model->getAttributes());
+        $oldValues = $diff->getAttributes();
+        $newValues = $model->getAttributes();
+
+        $differ = app(MapDiffer::class);
+        $diffArray = collect($differ->doDiff($oldValues, $newValues))
+            ->map(function($value) {
+                return $value instanceof DiffOpChange || $value instanceof DiffOpAdd
+                    ? $value->getNewValue()
+                    : $value;
+            })
+            ->toArray();
 
         if (isset( $diffArray[ $model->getCreatedAtColumn() ] )) {
             unset( $diffArray[ $model->getCreatedAtColumn() ] );
